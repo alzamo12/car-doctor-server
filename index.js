@@ -1,8 +1,11 @@
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
+const serverless = require('serverless-http');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config()
 const app = express();
+const router = express.Router();
 const port = process.env.PORT || 5000;
 
 // middleWare
@@ -28,6 +31,20 @@ async function run() {
         const serviceCollection = client.db('carDoctor').collection('Services');
         const bookingCollection = client.db('carDoctor').collection('bookings');
 
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            console.log(user)
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' })
+            res
+            .cookie('token', token, {
+                httpOnly: true,
+                secure: false, 
+                sameSite: 'none'
+            })
+            .send({success: 'true'})
+        })
+
+        // services related api
         app.get('/services', async (req, res) => {
             const cursor = serviceCollection.find();
             const result = await cursor.toArray();
@@ -62,13 +79,13 @@ async function run() {
             res.send(result)
         })
 
-        app.patch('/bookings/:id', async(req, res) => {
+        app.patch('/bookings/:id', async (req, res) => {
             const id = req.params.id;
-            const filter = {_id: new ObjectId(id)}
+            const filter = { _id: new ObjectId(id) }
             const updatedBooking = req.body;
             console.log(updatedBooking)
             const updatedDoc = {
-                $set:{
+                $set: {
                     status: updatedBooking.status
                 }
             };
@@ -77,9 +94,9 @@ async function run() {
 
         })
 
-        app.delete('/bookings/:id', async(req, res) => {
+        app.delete('/bookings/:id', async (req, res) => {
             const id = req.params.id;
-            const query = {_id: new ObjectId(id)};
+            const query = { _id: new ObjectId(id) };
             const result = await bookingCollection.deleteOne(query);
             res.send(result)
         })
@@ -97,6 +114,7 @@ async function run() {
 run().catch(console.dir);
 
 
+
 app.get('/', (req, res) => {
     res.send("doctor in running")
 })
@@ -104,3 +122,5 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
     console.log(`Car doctor server is running on port: ${port}`)
 })
+
+module.exports.handler = serverless(app)
