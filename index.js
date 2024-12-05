@@ -1,16 +1,19 @@
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-const serverless = require('serverless-http');
+const cookieParser = require('cookie-parser');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config()
 const app = express();
-const router = express.Router();
 const port = process.env.PORT || 5000;
 
 // middleWare
-app.use(cors())
+app.use(cors({
+    origin: ['http://localhost:5173', 'http://localhost:5174'],
+    credentials: true
+}))
 app.use(express.json());
+app.use(cookieParser())
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.g8eto.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -23,6 +26,32 @@ const client = new MongoClient(uri, {
         deprecationErrors: true,
     }
 });
+
+// middlewares
+const logger = async(req, res, next) => {
+    console.log('called:', req.host, req.originalUrl)
+    next()
+};
+
+const verifyToken = async(req, res, next)=>{
+    const token = req.cookies?.token;
+    if(!token){
+        return res.status(401).send({message: 'forbidden'});
+    }
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        // error 
+        if(err){
+            console.log(err);
+            return res.status(401).send({message: 'unauthorized'})
+        }
+        // if token is valid then it would be decoded
+        console.log('value in the token', decoded)
+        // req.user =  decoded
+        req.user = decoded
+    })
+    next()
+}
+
 
 async function run() {
     try {
@@ -39,9 +68,8 @@ async function run() {
             .cookie('token', token, {
                 httpOnly: true,
                 secure: false, 
-                sameSite: 'none'
             })
-            .send({success: 'true'})
+            .send({success: true})
         })
 
         // services related api
@@ -63,7 +91,13 @@ async function run() {
         })
 
         // bookings
-        app.get('/bookings', async (req, res) => {
+        app.get('/bookings',logger, verifyToken, async (req, res) => {
+           const newToken = req.cookies.token;
+           console.log('user in the valid token', req.user)
+            // console.log(newToken)
+            if(req.query.email !== req.user.email){
+                return res.status(403).send({message: 'forbidden access'})
+            }
             let query = {};
             if (req.query?.email) {
                 query = { email: req.query.email };
@@ -123,4 +157,3 @@ app.listen(port, () => {
     console.log(`Car doctor server is running on port: ${port}`)
 })
 
-module.exports.handler = serverless(app)
